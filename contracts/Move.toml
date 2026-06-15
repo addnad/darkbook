@@ -1,0 +1,6 @@
+[package]
+name = "contracts"
+edition = "2024"
+
+[addresses]
+darkbook = "0x0"

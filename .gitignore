@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Environment files (contains private key)
+.env
+.env.local
+
+# Sui build artifacts
+contracts/build/
+contracts/Published.toml
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*

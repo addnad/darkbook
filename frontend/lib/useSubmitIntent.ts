@@ -29,7 +29,7 @@ export function useSubmitIntent() {
     const amountMist = BigInt(Math.round(amountSui * 1_000_000_000));
     const minPriceScaled = Math.round(minPriceUsd * 1_000_000);
     const sideU8 = side === 'BUY' ? 0 : 1;
-    const expiresAt = Date.now() + 30_000;
+    const expiresAt = Date.now() + 120_000;
 
     const tx = new Transaction();
     tx.setGasBudget(50_000_000);

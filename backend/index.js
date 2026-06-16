@@ -24,7 +24,7 @@ console.log("Matcher address:", matcherAddress);
 const PACKAGE_ID = process.env.PACKAGE_ID;
 const VAULT_ID = process.env.VAULT_ID;
 const VAULT_INITIAL_VERSION = Number(process.env.VAULT_INITIAL_VERSION);
-const MATCH_TIMEOUT_MS = 30000; // 30 seconds before routing to DeepBook
+const MATCH_TIMEOUT_MS = 120000; // 30 seconds before routing to DeepBook
 
 const pendingIntents = new Map();
 

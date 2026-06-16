@@ -5,6 +5,7 @@ import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useSubmitIntent, type IntentResult } from '@/lib/useSubmitIntent';
 import Ticker from '@/components/ticker';
 import TradeHistory from '@/components/trade-history';
+import PendingIntents from '@/components/pending-intents';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GodRays, MeshGradient } from '@paper-design/shaders-react';
@@ -226,6 +227,7 @@ export default function Hero() {
 												</button>
 											</form>
 											<TradeHistory onRefresh={historyRefresh} />
+											<PendingIntents />
 										</div>
 									</div>
 								</motion.div>

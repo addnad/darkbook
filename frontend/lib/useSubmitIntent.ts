@@ -7,7 +7,6 @@ const PACKAGE_ID = '0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd
 const VAULT_ID = '0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba';
 const VAULT_INITIAL_VERSION = 349181739;
 const BACKEND_URL = 'http://localhost:3001';
-const TESTNET_RPC = 'https://sui-testnet.nodeinfra.com';
 
 export type IntentResult =
   | { status: 'matched'; digest: string; matchedWith: string; price: number; venue: string }
@@ -51,36 +50,19 @@ export function useSubmitIntent() {
       ],
     });
 
-    const result = await signAndExecute({
-      transaction: tx,
-    });
+    const result = await signAndExecute({ transaction: tx });
 
-    // Poll for transaction with retries to ensure indexing
-    let txDetails: any = null;
-    for (let i = 0; i < 5; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const res2 = await fetch(`${TESTNET_RPC}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'sui_getTransactionBlock',
-          params: [result.digest, { showObjectChanges: true, showEffects: true, showEvents: true }],
-        }),
-      });
-      txDetails = await res2.json();
-      const changes = txDetails?.result?.objectChanges ?? [];
-      const found = changes.find((c: any) => c.type === 'created' && c.objectType?.includes('::vault::Intent'));
-      if (found) break;
-    }
+    // Fetch full tx details via backend proxy — avoids browser CORS/truncation issues
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const txRes = await fetch(`${BACKEND_URL}/tx/${result.digest}`);
+    const txDetails = await txRes.json();
 
-    // Extract Intent from events (most reliable — emitted by deposit_and_intent)
-    const events = txDetails?.result?.events ?? [];
+    // Extract Intent from events
+    const events = txDetails?.events ?? [];
     const depositedEvent = events.find((e: any) => e.type?.includes('::vault::Deposited'));
-    
+
     // Fallback to objectChanges
-    const objectChanges = txDetails?.result?.objectChanges ?? [];
+    const objectChanges = txDetails?.objectChanges ?? [];
     const intentObjChange = objectChanges.find(
       (c: any) => c.type === 'created' && c.objectType?.includes('::vault::Intent')
     );

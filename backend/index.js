@@ -241,3 +241,16 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log("DarkBook intent engine running on port " + PORT);
 });
+
+// Get transaction details (used by frontend to extract Intent object)
+app.get("/tx/:digest", async (req, res) => {
+  try {
+    const tx = await client.getTransactionBlock({
+      digest: req.params.digest,
+      options: { showObjectChanges: true, showEvents: true },
+    });
+    res.json(tx);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

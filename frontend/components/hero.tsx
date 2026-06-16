@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useSubmitIntent, type IntentResult } from '@/lib/useSubmitIntent';
 import Ticker from '@/components/ticker';
+import TradeHistory from '@/components/trade-history';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GodRays, MeshGradient } from '@paper-design/shaders-react';
@@ -16,6 +17,7 @@ export default function Hero() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [intentResult, setIntentResult] = useState<IntentResult | null>(null);
 	const [submitError, setSubmitError] = useState('');
+	const [historyRefresh, setHistoryRefresh] = useState(0);
 	const account = useCurrentAccount();
 	const { submitIntent } = useSubmitIntent();
 
@@ -33,6 +35,7 @@ export default function Hero() {
 				minPriceUsd: parseFloat(minPrice),
 			});
 			setIntentResult(result);
+			setHistoryRefresh(n => n + 1);
 		} catch (err: any) {
 			setSubmitError(err.message || 'Something went wrong');
 		} finally {
@@ -222,6 +225,7 @@ export default function Hero() {
 													{isSubmitting ? 'Submitting...' : !account ? 'Connect wallet to continue' : 'Submit Intent'}
 												</button>
 											</form>
+											<TradeHistory onRefresh={historyRefresh} />
 										</div>
 									</div>
 								</motion.div>

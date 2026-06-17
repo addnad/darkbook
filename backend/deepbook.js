@@ -1,19 +1,41 @@
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
+import { Transaction } from "@mysten/sui/transactions";
+import { DeepBookClient } from "@mysten/deepbook-v3";
+import dotenv from "dotenv";
+dotenv.config();
 
 const DEEPBOOK_INDEXER = "https://deepbook-indexer.testnet.mystenlabs.com";
-const POOL_NAME = "SUI_DBUSDC";
+const POOL_KEY = "SUI_DBUSDC";
 
-// === Price Feed from DeepBook Indexer ===
+const client = new SuiClient({ url: getFullnodeUrl("testnet") });
+const { secretKey } = decodeSuiPrivateKey(process.env.MATCHER_PRIVATE_KEY);
+const keypair = Ed25519Keypair.fromSecretKey(secretKey);
+const matcherAddress = keypair.getPublicKey().toSuiAddress();
 
-export async function getSuiUsdcPrice(pool = POOL_NAME) {
+const BALANCE_MANAGER_ID = process.env.BALANCE_MANAGER_ID;
+const BALANCE_MANAGER_VERSION = Number(process.env.BALANCE_MANAGER_VERSION);
+const BALANCE_MANAGER_KEY = "DARKBOOK_MANAGER";
+
+const dbClient = new DeepBookClient({
+  address: matcherAddress,
+  network: "testnet",
+  client,
+  balanceManagers: {
+    [BALANCE_MANAGER_KEY]: {
+      address: BALANCE_MANAGER_ID,
+      tradeCap: undefined,
+    },
+  },
+});
+
+export async function getSuiUsdcPrice(pool = "SUI_DBUSDC") {
   const res = await fetch(`${DEEPBOOK_INDEXER}/summary`);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   const data = await res.json();
   const pair = data.find(p => p.trading_pairs === pool);
-  if (!pair) throw new Error(`${pool} pair not found in DeepBook indexer`);
+  if (!pair) throw new Error(`${pool} pair not found`);
   return {
     pool,
     last_price: pair.last_price,
@@ -27,27 +49,17 @@ export async function getSuiUsdcPrice(pool = POOL_NAME) {
   };
 }
 
-// === Order Book Depth ===
-
-export async function getOrderBook(depth = 10, pool = POOL_NAME) {
-  const res = await fetch(
-    `${DEEPBOOK_INDEXER}/orderbook/${pool}?level=2&depth=${depth}`
-  );
+export async function getOrderBook(depth = 10, pool = "SUI_DBUSDC") {
+  const res = await fetch(`${DEEPBOOK_INDEXER}/orderbook/${pool}?level=2&depth=${depth}`);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   return await res.json();
 }
 
-// === Recent Trades ===
-
-export async function getRecentTrades(limit = 20, pool = POOL_NAME) {
-  const res = await fetch(
-    `${DEEPBOOK_INDEXER}/trades/${pool}?limit=${limit}`
-  );
+export async function getRecentTrades(limit = 20, pool = "SUI_DBUSDC") {
+  const res = await fetch(`${DEEPBOOK_INDEXER}/trades/${pool}?limit=${limit}`);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   return await res.json();
 }
-
-// === All Pools Info ===
 
 export async function getPools() {
   const res = await fetch(`${DEEPBOOK_INDEXER}/get_pools`);
@@ -55,44 +67,123 @@ export async function getPools() {
   return await res.json();
 }
 
-// === OHLCV Candles ===
-
 export async function getCandles(interval = "1h", limit = 24) {
-  const res = await fetch(
-    `${DEEPBOOK_INDEXER}/ohclv/${POOL_NAME}?interval=${interval}&limit=${limit}`
-  );
+  const res = await fetch(`${DEEPBOOK_INDEXER}/ohclv/SUI_DBUSDC?interval=${interval}&limit=${limit}`);
   if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
   return await res.json();
 }
 
-// === Route unmatched order to DeepBook ===
-// When no peer match found after timeout, we route via DeepBook
-// Real execution uses Sui CLI to avoid SDK version conflicts
-
 export async function routeToDeepBook(intent, packageId, vaultId) {
-  console.log(
-    `[DeepBook] Routing unmatched ${intent.side === 0 ? "BUY" : "SELL"} ` +
-    `intent to DeepBook... id=${intent.id}`
-  );
+  const sideLabel = intent.side === 0 ? "BUY" : "SELL";
+  const isBid = intent.side === 0;
+  const rawAmountSui = Number(intent.amount) / 1e9;
+  const LOT_SIZE = 1;
+  const amountSui = Math.max(LOT_SIZE, Math.floor(rawAmountSui / LOT_SIZE) * LOT_SIZE);
+
+  if (amountSui !== rawAmountSui) {
+    console.log(`[DeepBook] Adjusted quantity from ${rawAmountSui} to ${amountSui} SUI (lot size: ${LOT_SIZE})`);
+  }
+
+  console.log(`[DeepBook] Routing unmatched ${sideLabel} intent to DeepBook V3...`);
+  console.log(`[DeepBook] Amount: ${amountSui} SUI | Intent: ${intent.id}`);
 
   try {
     const price = await getSuiUsdcPrice();
     console.log(`[DeepBook] SUI/USDC — last: $${price.last_price} | bid: $${price.highest_bid} | ask: $${price.lowest_ask}`);
-  } catch (e) {
-    console.log("[DeepBook] Could not fetch price:", e.message);
-  }
 
-  // For testnet demo: log the routing event with full context
-  // In production this executes a real DeepBook market order via BalanceManager
-  return {
-    routed: true,
-    venue: "DeepBook",
-    pool: POOL_NAME,
-    intentId: intent.id,
-    side: intent.side === 0 ? "buy" : "sell",
-    amount: intent.amount,
-    amount_sui: (intent.amount / 1e9).toFixed(4),
-    timestamp: Date.now(),
-    indexer: DEEPBOOK_INDEXER,
-  };
+    // Single transaction: deposit + market order
+    console.log(`[DeepBook] Depositing ${amountSui} SUI and placing ${sideLabel} market order...`);
+    const orderTx = new Transaction();
+    orderTx.setGasBudget(100_000_000);
+
+    const [depositCoin] = orderTx.splitCoins(orderTx.gas, [
+      orderTx.pure.u64(BigInt(Math.round(amountSui * 1e9)))
+    ]);
+
+    orderTx.moveCall({
+      target: `0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c::balance_manager::deposit`,
+      typeArguments: [`0x2::sui::SUI`],
+      arguments: [
+        orderTx.sharedObjectRef({
+          objectId: BALANCE_MANAGER_ID,
+          initialSharedVersion: BALANCE_MANAGER_VERSION,
+          mutable: true,
+        }),
+        depositCoin,
+      ],
+    });
+
+    dbClient.deepBook.placeMarketOrder({
+      poolKey: POOL_KEY,
+      balanceManagerKey: BALANCE_MANAGER_KEY,
+      clientOrderId: Date.now(),
+      quantity: amountSui,
+      isBid,
+      payWithDeep: false,
+    })(orderTx);
+
+    const orderResult = await client.signAndExecuteTransaction({
+      signer: keypair,
+      transaction: orderTx,
+      options: { showEffects: true, showEvents: true },
+    });
+    await client.waitForTransaction({ digest: orderResult.digest });
+    console.log(`[DeepBook] Deposit + order confirmed: ${orderResult.digest}`);
+
+    // Withdraw both SUI and DBUSDC to intent owner
+    console.log(`[DeepBook] Withdrawing proceeds to ${intent.owner}...`);
+    const withdrawTx = new Transaction();
+    withdrawTx.setGasBudget(50_000_000);
+
+    dbClient.balanceManager.withdrawAllFromManager(
+      BALANCE_MANAGER_KEY,
+      "SUI",
+      intent.owner
+    )(withdrawTx);
+    dbClient.balanceManager.withdrawAllFromManager(
+      BALANCE_MANAGER_KEY,
+      "DBUSDC",
+      intent.owner
+    )(withdrawTx);
+
+    const withdrawResult = await client.signAndExecuteTransaction({
+      signer: keypair,
+      transaction: withdrawTx,
+      options: { showEffects: true, showBalanceChanges: true },
+    });
+    await client.waitForTransaction({ digest: withdrawResult.digest });
+    console.log(`[DeepBook] Withdrawal confirmed: ${withdrawResult.digest}`);
+
+    // Log balance changes
+    const changes = withdrawResult.balanceChanges ?? [];
+    for (const change of changes) {
+      if (change.owner?.AddressOwner === intent.owner) {
+        console.log(`[DeepBook] Sent to owner: ${change.amount} of ${change.coinType}`);
+      }
+    }
+
+    return {
+      routed: true,
+      venue: "DeepBook V3",
+      pool: POOL_KEY,
+      intentId: intent.id,
+      side: sideLabel,
+      amount: intent.amount,
+      amount_sui: amountSui.toFixed(4),
+      price: price.last_price,
+      orderDigest: orderResult.digest,
+      withdrawDigest: withdrawResult.digest,
+      timestamp: Date.now(),
+    };
+
+  } catch (err) {
+    console.error(`[DeepBook] Routing failed:`, err.message);
+    return {
+      routed: false,
+      venue: "DeepBook V3",
+      intentId: intent.id,
+      error: err.message,
+      timestamp: Date.now(),
+    };
+  }
 }

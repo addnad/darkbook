@@ -8,6 +8,7 @@ module darkbook::vault {
     const EInsufficientBalance: u64 = 2;
     const EAlreadyMatched: u64 = 3;
     const ESelfMatch: u64 = 4;
+    const ENotMatched: u64 = 5;
 
     public struct Vault has key {
         id: UID,
@@ -109,10 +110,17 @@ module darkbook::vault {
         assert!(*table::borrow(&vault.balances, buyer) >= amount, EInsufficientBalance);
         assert!(*table::borrow(&vault.balances, seller) >= amount, EInsufficientBalance);
 
+        // Clear balances
         let buyer_bal = table::borrow_mut(&mut vault.balances, buyer);
-        *buyer_bal = *buyer_bal - amount;
+        *buyer_bal = 0;
         let seller_bal = table::borrow_mut(&mut vault.balances, seller);
-        *seller_bal = *seller_bal + amount;
+        *seller_bal = 0;
+
+        // Transfer coins directly to both parties
+        let buyer_coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, buyer);
+        let seller_coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, seller);
+        transfer::public_transfer(buyer_coin, buyer);
+        transfer::public_transfer(seller_coin, seller);
 
         intent_a.matched = true;
         intent_b.matched = true;
@@ -138,6 +146,23 @@ module darkbook::vault {
         transfer::public_transfer(coin, sender);
 
         event::emit(Cancelled { user: sender, amount: intent.amount });
+    }
+
+    entry fun withdraw(
+        vault: &mut Vault,
+        intent: &mut Intent,
+        ctx: &mut TxContext
+    ) {
+        let sender = tx_context::sender(ctx);
+        assert!(intent.owner == sender, ENotOwner);
+        assert!(intent.matched, ENotMatched);
+        assert!(table::contains(&vault.balances, sender), EInsufficientBalance);
+
+        let bal = table::borrow_mut(&mut vault.balances, sender);
+        *bal = 0;
+
+        let coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, sender);
+        transfer::public_transfer(coin, sender);
     }
 
     public fun balance_of(vault: &Vault, addr: address): u64 {

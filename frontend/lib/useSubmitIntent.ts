@@ -7,6 +7,7 @@ const PACKAGE_ID = '0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd
 const VAULT_ID = '0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba';
 const VAULT_INITIAL_VERSION = 349181739;
 const BACKEND_URL = 'http://localhost:3001';
+const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 
 export type IntentResult =
   | { status: 'matched'; digest: string; matchedWith: string; price: number; venue: string }
@@ -16,6 +17,54 @@ export interface SubmitIntentParams {
   side: 'BUY' | 'SELL';
   amountSui: number;
   minPriceUsd: number;
+}
+
+export async function pollForSettlement(
+  walletAddress: string,
+  afterMs: number,
+  onSettled: (result: IntentResult) => void,
+  signal: AbortSignal
+) {
+  while (!signal.aborted) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    if (signal.aborted) break;
+    try {
+      const res = await fetch(TESTNET_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'suix_queryEvents',
+          params: [
+            { MoveEventType: `${PACKAGE_ID}::vault::Settled` },
+            null,
+            10,
+            true,
+          ],
+        }),
+      });
+      const data = await res.json();
+      const events = data?.result?.data ?? [];
+      const match = events.find((e: any) => {
+        const ts = parseInt(e.timestampMs);
+        const json = e.parsedJson;
+        return ts >= afterMs && (json.buyer === walletAddress || json.seller === walletAddress);
+      });
+      if (match) {
+        const json = match.parsedJson;
+        const matchedWith = json.buyer === walletAddress ? json.seller : json.buyer;
+        onSettled({
+          status: 'matched',
+          digest: match.id.txDigest,
+          matchedWith,
+          price: parseInt(json.price),
+          venue: 'darkpool',
+        });
+        break;
+      }
+    } catch {}
+  }
 }
 
 export function useSubmitIntent() {
@@ -52,16 +101,14 @@ export function useSubmitIntent() {
 
     const result = await signAndExecute({ transaction: tx });
 
-    // Fetch full tx details via backend proxy — avoids browser CORS/truncation issues
+    // Fetch full tx details via backend proxy
     await new Promise(resolve => setTimeout(resolve, 1500));
     const txRes = await fetch(`${BACKEND_URL}/tx/${result.digest}`);
     const txDetails = await txRes.json();
 
-    // Extract Intent from events
     const events = txDetails?.events ?? [];
     const depositedEvent = events.find((e: any) => e.type?.includes('::vault::Deposited'));
 
-    // Fallback to objectChanges
     const objectChanges = txDetails?.objectChanges ?? [];
     const intentObjChange = objectChanges.find(
       (c: any) => c.type === 'created' && c.objectType?.includes('::vault::Intent')

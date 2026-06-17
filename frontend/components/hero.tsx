@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
-import { useSubmitIntent, type IntentResult } from '@/lib/useSubmitIntent';
+import { useSubmitIntent, pollForSettlement, type IntentResult } from '@/lib/useSubmitIntent';
 import Ticker from '@/components/ticker';
 import TradeHistory from '@/components/trade-history';
 import PendingIntents from '@/components/pending-intents';
@@ -37,6 +37,14 @@ export default function Hero() {
 			});
 			setIntentResult(result);
 			setHistoryRefresh(n => n + 1);
+			if (result.status === 'pending' && account) {
+				const submittedAt = Date.now();
+				const controller = new AbortController();
+				pollForSettlement(account.address, submittedAt, (settled) => {
+					setIntentResult(settled);
+					setHistoryRefresh(n => n + 1);
+				}, controller.signal);
+			}
 		} catch (err: any) {
 			setSubmitError(err.message || 'Something went wrong');
 		} finally {

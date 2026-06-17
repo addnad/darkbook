@@ -16,14 +16,14 @@ export default function CancelPage() {
   const [status, setStatus] = useState('');
   const [open, setOpen] = useState(false);
 
-  async function handleCancel() {
+  async function handleAction(action: 'cancel' | 'withdraw') {
     if (!account || !intentId || !intentVersion) return;
     setStatus('Building transaction...');
     try {
       const tx = new Transaction();
       tx.setGasBudget(50_000_000);
       tx.moveCall({
-        target: `${PACKAGE_ID}::vault::cancel`,
+        target: `${PACKAGE_ID}::vault::${action}`,
         arguments: [
           tx.sharedObjectRef({ objectId: VAULT_ID, initialSharedVersion: VAULT_INITIAL_VERSION, mutable: true }),
           tx.sharedObjectRef({ objectId: intentId, initialSharedVersion: Number(intentVersion), mutable: true }),
@@ -39,7 +39,7 @@ export default function CancelPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] flex flex-col items-center justify-center p-8 gap-6">
-      <h1 className="text-white text-2xl font-mono">Cancel Intent</h1>
+      <h1 className="text-white text-2xl font-mono">Manage Intent</h1>
       {!account ? (
         <ConnectModal trigger={<button className="px-6 py-2 rounded-full bg-[#004FE5] text-white">Connect Wallet</button>} open={open} onOpenChange={setOpen} />
       ) : (
@@ -49,9 +49,14 @@ export default function CancelPage() {
           <input value={intentId} onChange={e => setIntentId(e.target.value)} placeholder="0x..." className="bg-[#1a1a2e] text-white px-4 py-2 rounded-lg text-sm font-mono" />
           <label className="text-gray-400 text-xs font-mono uppercase">Initial Shared Version</label>
           <input value={intentVersion} onChange={e => setIntentVersion(e.target.value)} placeholder="885018894" className="bg-[#1a1a2e] text-white px-4 py-2 rounded-lg text-sm font-mono" />
-          <button onClick={handleCancel} className="px-6 py-2 rounded-full bg-[#004FE5] text-white font-medium hover:bg-[#0041C1] transition-colors">
-            Cancel Intent & Reclaim Funds
-          </button>
+          <div className="flex gap-3">
+            <button onClick={() => handleAction('cancel')} className="flex-1 px-6 py-2 rounded-full bg-[#004FE5] text-white font-medium hover:bg-[#0041C1] transition-colors">
+              Cancel Intent
+            </button>
+            <button onClick={() => handleAction('withdraw')} className="flex-1 px-6 py-2 rounded-full bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors">
+              Withdraw (Matched)
+            </button>
+          </div>
           {status && <p className="text-sm font-mono text-gray-300 break-all">{status}</p>}
         </div>
       )}

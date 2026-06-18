@@ -11,7 +11,8 @@ const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 
 export type IntentResult =
   | { status: 'matched'; digest: string; matchedWith: string; price: number; venue: string }
-  | { status: 'pending'; intentId: string; message: string };
+  | { status: 'pending'; intentId: string; message: string }
+  | { status: 'routed'; venue: string; orderDigest: string; withdrawDigest: string; price: number; side: string; amount: string };
 
 export interface SubmitIntentParams {
   side: 'BUY' | 'SELL';
@@ -60,6 +61,33 @@ export async function pollForSettlement(
           matchedWith,
           price: parseInt(json.price),
           venue: 'darkpool',
+        });
+        break;
+      }
+    } catch {}
+  }
+}
+
+export async function pollForRouting(
+  intentId: string,
+  onRouted: (result: IntentResult) => void,
+  signal: AbortSignal
+) {
+  while (!signal.aborted) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    if (signal.aborted) break;
+    try {
+      const res = await fetch(`${BACKEND_URL}/routing/${intentId}`);
+      const data = await res.json();
+      if (data.status === 'routed') {
+        onRouted({
+          status: 'routed',
+          venue: data.venue,
+          orderDigest: data.orderDigest,
+          withdrawDigest: data.withdrawDigest,
+          price: data.price,
+          side: data.side,
+          amount: data.amount,
         });
         break;
       }

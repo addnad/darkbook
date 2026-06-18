@@ -89,8 +89,26 @@ function scheduleDeepBookFallback(intent) {
     try {
       const result = await routeToDeepBook(intent, PACKAGE_ID, VAULT_ID);
       console.log("[DeepBook] Routed:", result);
+      routingResults.set(intent.id, {
+        status: "routed",
+        venue: "DeepBook V3",
+        intentId: intent.id,
+        owner: intent.owner,
+        side: intent.side === 0 ? "buy" : "sell",
+        amount: intent.amount,
+        orderDigest: result.orderDigest,
+        withdrawDigest: result.withdrawDigest,
+        price: result.price,
+        timestamp: result.timestamp,
+      });
     } catch (err) {
       console.error("[DeepBook] Routing failed:", err.message);
+      routingResults.set(intent.id, {
+        status: "routing_failed",
+        intentId: intent.id,
+        error: err.message,
+        timestamp: Date.now(),
+      });
     }
   }, MATCH_TIMEOUT_MS);
   return timer;
@@ -254,4 +272,16 @@ app.get("/tx/:digest", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Store for DeepBook routing results
+const routingResults = new Map();
+
+// Get routing result for an intent
+app.get("/routing/:intentId", (req, res) => {
+  const result = routingResults.get(req.params.intentId);
+  if (!result) {
+    return res.json({ status: "not_found" });
+  }
+  res.json(result);
 });

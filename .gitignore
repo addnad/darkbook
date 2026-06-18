@@ -15,3 +15,8 @@ contracts/Published.toml
 # Logs
 *.log
 npm-debug.log*
+
+# Test and setup scripts (contain sensitive data)
+backend/test-intent.js
+backend/cancel-intent.js
+backend/setup-balance-manager.js

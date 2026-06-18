@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
-import { useSubmitIntent, pollForSettlement, type IntentResult } from '@/lib/useSubmitIntent';
+import { useSubmitIntent, pollForSettlement, pollForRouting, type IntentResult } from '@/lib/useSubmitIntent';
 import Ticker from '@/components/ticker';
 import TradeHistory from '@/components/trade-history';
 import PendingIntents from '@/components/pending-intents';

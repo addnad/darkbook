@@ -18,9 +18,9 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "DarkBook — Private OTC Dark Pool on Sui",
+  description: "Trade large blocks without market impact. Private OTC dark pool with atomic settlement on Sui and DeepBook V3 liquidity fallback.",
+  generator: "DarkBook",
 }
 
 export default function RootLayout({

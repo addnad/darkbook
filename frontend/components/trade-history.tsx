@@ -65,7 +65,7 @@ export default function TradeHistory({ onRefresh }: { onRefresh?: number }) {
         const data = await res.json();
         const events = data?.result?.data ?? [];
         const mine = events
-          .filter((e: any) => e.parsedJson?.user === account.address)
+          .filter((e: any) => e.parsedJson?.user === account?.address)
           .slice(0, 3)
           .map((e: any) => ({
             txDigest: e.id.txDigest,

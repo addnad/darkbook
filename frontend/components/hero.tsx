@@ -268,7 +268,7 @@ export default function Hero() {
 															<div className="w-full bg-white/10 rounded-xl p-5 text-left space-y-3">
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Status</span><span className="text-white font-medium">Pending Match</span></div>
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Fallback</span><span className="text-white font-medium">DeepBook V3</span></div>
-																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Intent ID</span><span className="text-white font-medium text-xs">{intentResult.intentId.slice(0,8)}…</span></div>
+																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Intent ID</span><span className="text-white font-medium text-xs">{"intentId" in intentResult ? intentResult.intentId.slice(0,8) : ""}…</span></div>
 															</div>
 														</>
 													)}

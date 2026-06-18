@@ -20,3 +20,4 @@ npm-debug.log*
 backend/test-intent.js
 backend/cancel-intent.js
 backend/setup-balance-manager.js
+frontend/pnpm-lock.yaml

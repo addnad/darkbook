@@ -18,7 +18,7 @@ export default function Ticker({ dark = false }: { dark?: boolean }) {
   useEffect(() => {
     async function fetchPairs() {
       try {
-        const res = await fetch('http://localhost:3001/deepbook/pairs');
+        const res = await fetch('https://darkbook-backend.onrender.com/deepbook/pairs');
         const data = await res.json();
         setPairs(data.pairs);
       } catch {}

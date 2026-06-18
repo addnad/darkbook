@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-const BACKEND_URL = 'http://localhost:3001';
+const BACKEND_URL = 'https://darkbook-backend.onrender.com';
 
 interface PendingIntent {
   id: string;

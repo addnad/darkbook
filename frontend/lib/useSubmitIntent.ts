@@ -6,7 +6,7 @@ import { Transaction } from '@mysten/sui/transactions';
 const PACKAGE_ID = '0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd000de3';
 const VAULT_ID = '0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba';
 const VAULT_INITIAL_VERSION = 349181739;
-const BACKEND_URL = 'http://localhost:3001';
+const BACKEND_URL = 'https://darkbook-backend.onrender.com';
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 
 export type IntentResult =

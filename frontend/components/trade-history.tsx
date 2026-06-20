@@ -5,6 +5,7 @@ import { useCurrentAccount } from '@mysten/dapp-kit';
 
 const PACKAGE_ID = '0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499';
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
+const BACKEND_URL = 'https://darkbook-backend.onrender.com';
 
 interface Trade {
   txDigest: string;
@@ -14,6 +15,7 @@ interface Trade {
   side?: number;
   min_price?: string;
   matched?: boolean;
+  routed?: boolean;
 }
 
 async function fetchIntentDetails(intentId: string) {
@@ -78,11 +80,18 @@ export default function TradeHistory({ onRefresh }: { onRefresh?: number }) {
         const withDetails = await Promise.all(
           mine.map(async (t: Trade) => {
             const fields = await fetchIntentDetails(t.intent_id);
+            let routed = false;
+            try {
+              const rRes = await fetch(`${BACKEND_URL}/routing/${t.intent_id}`);
+              const rData = await rRes.json();
+              if (rData?.status === 'routed') routed = true;
+            } catch {}
             return {
               ...t,
               side: fields?.side,
               min_price: fields?.min_price,
               matched: fields?.matched,
+              routed,
             };
           })
         );
@@ -111,8 +120,8 @@ export default function TradeHistory({ onRefresh }: { onRefresh?: number }) {
             const minPriceUsd = t.min_price ? `$${(parseInt(t.min_price) / 1_000_000).toFixed(2)}` : null;
             const sideLabel = t.side === 0 ? 'BUY' : 'SELL';
             const sideColor = t.side === 0 ? 'text-emerald-400' : 'text-red-400';
-            const status = t.matched ? 'Matched' : 'Pending';
-            const statusColor = t.matched ? 'text-emerald-400' : 'text-white/30';
+            const status = t.matched ? 'Matched' : t.routed ? 'Routed → DeepBook' : 'Pending';
+            const statusColor = t.matched ? 'text-emerald-400' : t.routed ? 'text-blue-400' : 'text-white/30';
             const date = new Date(parseInt(t.timestampMs)).toLocaleString(undefined, {
               month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
             });

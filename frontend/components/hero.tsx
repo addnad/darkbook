@@ -191,11 +191,11 @@ export default function Hero() {
 												<div className="flex items-center gap-3 sm:gap-4">
 													<div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center">
 														<svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-															<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+															<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4l8 4-8 4-8-4 8-4zM4 12l8 4 8-4M4 16l8 4 8-4" />
 														</svg>
 													</div>
 													<div>
-														<p className="text-base sm:text-lg lg:text-xl text-white">Private OTC Dark Pool</p>
+														<p className="text-base sm:text-lg lg:text-xl text-white">OTC Block-Trading Venue</p>
 																			</div>
 												</div>
 											</div>
@@ -258,7 +258,7 @@ export default function Hero() {
 															<h2 className="text-3xl sm:text-4xl font-medium text-white tracking-[-0.03em]">Trade Settled</h2>
 															<p className="text-white/70 text-base">Your intent was matched and settled atomically on Sui.</p>
 															<div className="w-full bg-white/10 rounded-xl p-5 text-left space-y-3">
-																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Venue</span><span className="text-white font-medium">DarkBook Dark Pool</span></div>
+																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Venue</span><span className="text-white font-medium">DarkBook</span></div>
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Agreed Price</span><span className="text-white font-medium">${(intentResult.price / 1_000_000).toFixed(4)}</span></div>
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Matched With</span><span className="text-white font-medium">{intentResult.matchedWith.slice(0,6)}…{intentResult.matchedWith.slice(-4)}</span></div>
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Digest</span><span className="text-white font-medium text-xs">{intentResult.digest.slice(0,8)}…{intentResult.digest.slice(-6)}</span></div>

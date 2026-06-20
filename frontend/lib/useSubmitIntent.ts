@@ -12,7 +12,7 @@ const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 export type IntentResult =
   | { status: 'matched'; digest: string; matchedWith: string; price: number; venue: string }
   | { status: 'pending'; intentId: string; message: string }
-  | { status: 'routed'; venue: string; orderDigest: string; withdrawDigest: string; price: number; side: string; amount: string };
+  | { status: 'routed'; venue: string; digest: string; received?: { amount: string; coinType: string }[]; price: number; side: string; amount: string };
 
 export interface SubmitIntentParams {
   side: 'BUY' | 'SELL';
@@ -83,8 +83,8 @@ export async function pollForRouting(
         onRouted({
           status: 'routed',
           venue: data.venue,
-          orderDigest: data.orderDigest,
-          withdrawDigest: data.withdrawDigest,
+          digest: data.digest,
+          received: data.received,
           price: data.price,
           side: data.side,
           amount: data.amount,

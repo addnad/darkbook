@@ -44,6 +44,10 @@ export default function Hero() {
 					setIntentResult(settled);
 					setHistoryRefresh(n => n + 1);
 				}, controller.signal);
+				pollForRouting(result.intentId, (routed) => {
+					setIntentResult(routed);
+					setHistoryRefresh(n => n + 1);
+				}, controller.signal);
 			}
 		} catch (err: any) {
 			setSubmitError(err.message || 'Something went wrong');

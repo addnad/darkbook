@@ -96,8 +96,8 @@ function scheduleDeepBookFallback(intent) {
         owner: intent.owner,
         side: intent.side === 0 ? "buy" : "sell",
         amount: intent.amount,
-        orderDigest: result.orderDigest,
-        withdrawDigest: result.withdrawDigest,
+        digest: result.digest,
+        received: result.received,
         price: result.price,
         timestamp: result.timestamp,
       });

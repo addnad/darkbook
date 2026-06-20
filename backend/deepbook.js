@@ -1,13 +1,15 @@
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
-import { Transaction } from "@mysten/sui/transactions";
+import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
 import { DeepBookClient } from "@mysten/deepbook-v3";
 import dotenv from "dotenv";
 dotenv.config();
 
 const DEEPBOOK_INDEXER = "https://deepbook-indexer.testnet.mystenlabs.com";
 const POOL_KEY = "SUI_DBUSDC";
+const MIN_ORDER_SUI = 1.0; // on-chain pool min_size, confirmed via poolBookParams
+const LOT_SIZE_SUI = 0.1;  // on-chain pool lot_size, confirmed via poolBookParams
 
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 const { secretKey } = decodeSuiPrivateKey(process.env.MATCHER_PRIVATE_KEY);
@@ -29,6 +31,14 @@ const dbClient = new DeepBookClient({
     },
   },
 });
+
+function assertSuccess(result, label) {
+  const status = result.effects?.status?.status;
+  if (status !== "success") {
+    const errMsg = result.effects?.status?.error || "unknown on-chain abort";
+    throw new Error(`${label} failed on-chain: ${errMsg} (digest: ${result.digest})`);
+  }
+}
 
 export async function getSuiUsdcPrice(pool = "SUI_DBUSDC") {
   const res = await fetch(`${DEEPBOOK_INDEXER}/summary`);
@@ -67,52 +77,96 @@ export async function getPools() {
   return await res.json();
 }
 
-export async function getCandles(interval = "1h", limit = 24) {
-  const res = await fetch(`${DEEPBOOK_INDEXER}/ohclv/SUI_DBUSDC?interval=${interval}&limit=${limit}`);
-  if (!res.ok) throw new Error(`Indexer error: ${res.status}`);
-  return await res.json();
-}
-
-export async function routeToDeepBook(intent, packageId, vaultId) {
+export async function routeToDeepBook(intent) {
   const sideLabel = intent.side === 0 ? "BUY" : "SELL";
   const isBid = intent.side === 0;
+  // For SUI_DBUSDC pool:
+  // BUY  (bid)  = buying SUI with DBUSDC → deposit DBUSDC (quote), amount = SUI qty * price
+  // SELL (ask)  = selling SUI for DBUSDC → deposit SUI (base), amount = SUI qty
+  const DBUSDC_TYPE = "0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC";
+  const DBUSDC_SCALAR = 1_000_000;
+  const SUI_TYPE = "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI";
+  const SUI_SCALAR = 1_000_000_000;
+  const POOL_ADDRESS = "0x1c19362ca52b8ffd7a33cee805a67d40f31e6ba303753fd3a4cfdfacea7163a5";
   const rawAmountSui = Number(intent.amount) / 1e9;
-  const LOT_SIZE = 1;
-  const amountSui = Math.max(LOT_SIZE, Math.floor(rawAmountSui / LOT_SIZE) * LOT_SIZE);
-
-  if (amountSui !== rawAmountSui) {
-    console.log(`[DeepBook] Adjusted quantity from ${rawAmountSui} to ${amountSui} SUI (lot size: ${LOT_SIZE})`);
-  }
 
   console.log(`[DeepBook] Routing unmatched ${sideLabel} intent to DeepBook V3...`);
-  console.log(`[DeepBook] Amount: ${amountSui} SUI | Intent: ${intent.id}`);
+  console.log(`[DeepBook] Requested amount: ${rawAmountSui} SUI | Intent: ${intent.id}`);
+
+  // Enforce pool minimum order size before attempting anything on-chain
+  if (rawAmountSui < MIN_ORDER_SUI) {
+    const msg = `Amount ${rawAmountSui} SUI is below DeepBook pool minimum of ${MIN_ORDER_SUI} SUI`;
+    console.error(`[DeepBook] ${msg} - skipping route`);
+    return {
+      routed: false,
+      venue: "DeepBook V3",
+      intentId: intent.id,
+      error: msg,
+      timestamp: Date.now(),
+    };
+  }
+
+  // Round down to the nearest lot size so the order passes on-chain validation
+  const amountSui = Math.floor(rawAmountSui / LOT_SIZE_SUI) * LOT_SIZE_SUI;
+  const amountMist = BigInt(Math.round(amountSui * 1e9));
+
+  if (amountSui !== rawAmountSui) {
+    console.log(`[DeepBook] Rounded to lot size: ${amountSui} SUI (lot size: ${LOT_SIZE_SUI})`);
+  }
 
   try {
     const price = await getSuiUsdcPrice();
     console.log(`[DeepBook] SUI/USDC — last: $${price.last_price} | bid: $${price.highest_bid} | ask: $${price.lowest_ask}`);
 
-    // Single transaction: deposit + market order
-    console.log(`[DeepBook] Depositing ${amountSui} SUI and placing ${sideLabel} market order...`);
-    const orderTx = new Transaction();
-    orderTx.setGasBudget(100_000_000);
+    // --- Determine deposit coin & amount based on side ---
+    const depositCoinKey = isBid ? "DBUSDC" : "SUI";
+    const depositScalar = isBid ? DBUSDC_SCALAR : SUI_SCALAR;
+    const depositCoinType = isBid ? DBUSDC_TYPE : SUI_TYPE;
 
-    const [depositCoin] = orderTx.splitCoins(orderTx.gas, [
-      orderTx.pure.u64(BigInt(Math.round(amountSui * 1e9)))
-    ]);
+    let depositAmount; // human units (not raw)
+    if (isBid) {
+      const pricePerSui = price.lowest_ask || price.last_price;
+      const SLIPPAGE_BUFFER = 1.20; // 20% headroom for thin-book market-order slippage on testnet
+      depositAmount = Math.ceil(amountSui * pricePerSui * SLIPPAGE_BUFFER * depositScalar) / depositScalar;
+      console.log(`[DeepBook] BUY: will deposit ${depositAmount} DBUSDC at ask $${pricePerSui} (+20% slippage buffer)`);
+    } else {
+      depositAmount = amountSui;
+      console.log(`[DeepBook] SELL: will deposit ${depositAmount} SUI`);
+    }
 
-    orderTx.moveCall({
-      target: `0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c::balance_manager::deposit`,
-      typeArguments: [`0x2::sui::SUI`],
-      arguments: [
-        orderTx.sharedObjectRef({
-          objectId: BALANCE_MANAGER_ID,
-          initialSharedVersion: BALANCE_MANAGER_VERSION,
-          mutable: true,
-        }),
-        depositCoin,
-      ],
-    });
+    // --- Pre-flight balance checks (early, friendly errors) ---
+    const depositCoins = await client.getCoins({ owner: matcherAddress, coinType: depositCoinType });
+    const suiCoins = await client.getCoins({ owner: matcherAddress, coinType: SUI_TYPE });
+    const totalDeposit = depositCoins.data.reduce((s, c) => s + BigInt(c.balance), 0n);
+    const totalSui = suiCoins.data.reduce((s, c) => s + BigInt(c.balance), 0n);
+    const depositAmountRaw = BigInt(Math.round(depositAmount * depositScalar));
 
+    if (isBid) {
+      if (totalDeposit < depositAmountRaw) {
+        throw new Error(`Matcher has only ${Number(totalDeposit)/depositScalar} DBUSDC. Need ${depositAmount} DBUSDC. Fund the matcher with DBUSDC.`);
+      }
+      if (totalSui < 300_000_000n) {
+        throw new Error(`Matcher needs at least 0.3 SUI for gas. Run: sui client faucet`);
+      }
+    } else {
+      if (totalSui < depositAmountRaw + 300_000_000n) {
+        throw new Error(`Matcher has only ${Number(totalSui)/1e9} SUI. Need ${depositAmount} + ~0.3 gas. Run: sui client faucet`);
+      }
+    }
+
+    // --- Single atomic PTB: deposit -> market order -> withdraw all ---
+    console.log(`[DeepBook] Building atomic deposit+order+withdraw PTB...`);
+    const tx = new Transaction();
+    tx.setGasBudget(300_000_000);
+
+    // 1. Deposit (coinWithBalance auto-selects/merges/splits the funding coin)
+    dbClient.balanceManager.depositIntoManager(
+      BALANCE_MANAGER_KEY,
+      depositCoinKey,
+      depositAmount
+    )(tx);
+
+    // 2. Place market order (SDK generates owner proof internally)
     dbClient.deepBook.placeMarketOrder({
       poolKey: POOL_KEY,
       balanceManagerKey: BALANCE_MANAGER_KEY,
@@ -120,46 +174,30 @@ export async function routeToDeepBook(intent, packageId, vaultId) {
       quantity: amountSui,
       isBid,
       payWithDeep: false,
-    })(orderTx);
+    })(tx);
 
-    const orderResult = await client.signAndExecuteTransaction({
+    // 3. Sweep BOTH coins back to the intent owner. Manager ends empty.
+    dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "SUI", intent.owner)(tx);
+    dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "DBUSDC", intent.owner)(tx);
+
+    const txResult = await client.signAndExecuteTransaction({
       signer: keypair,
-      transaction: orderTx,
-      options: { showEffects: true, showEvents: true },
+      transaction: tx,
+      options: { showEffects: true, showEvents: true, showBalanceChanges: true },
     });
-    await client.waitForTransaction({ digest: orderResult.digest });
-    console.log(`[DeepBook] Deposit + order confirmed: ${orderResult.digest}`);
+    await client.waitForTransaction({ digest: txResult.digest });
+    assertSuccess(txResult, "Atomic route");
+    console.log(`[DeepBook] Atomic route confirmed: ${txResult.digest}`);
 
-    // Withdraw both SUI and DBUSDC to intent owner
-    console.log(`[DeepBook] Withdrawing proceeds to ${intent.owner}...`);
-    const withdrawTx = new Transaction();
-    withdrawTx.setGasBudget(50_000_000);
+    const received = (txResult.balanceChanges ?? [])
+      .filter(c => c.owner?.AddressOwner === intent.owner)
+      .map(c => ({ amount: c.amount, coinType: c.coinType }));
 
-    dbClient.balanceManager.withdrawAllFromManager(
-      BALANCE_MANAGER_KEY,
-      "SUI",
-      intent.owner
-    )(withdrawTx);
-    dbClient.balanceManager.withdrawAllFromManager(
-      BALANCE_MANAGER_KEY,
-      "DBUSDC",
-      intent.owner
-    )(withdrawTx);
-
-    const withdrawResult = await client.signAndExecuteTransaction({
-      signer: keypair,
-      transaction: withdrawTx,
-      options: { showEffects: true, showBalanceChanges: true },
-    });
-    await client.waitForTransaction({ digest: withdrawResult.digest });
-    console.log(`[DeepBook] Withdrawal confirmed: ${withdrawResult.digest}`);
-
-    // Log balance changes
-    const changes = withdrawResult.balanceChanges ?? [];
-    for (const change of changes) {
-      if (change.owner?.AddressOwner === intent.owner) {
-        console.log(`[DeepBook] Sent to owner: ${change.amount} of ${change.coinType}`);
-      }
+    for (const r of received) {
+      console.log(`[DeepBook] Owner received: ${r.amount} of ${r.coinType}`);
+    }
+    if (received.length === 0 || received.every(r => BigInt(r.amount) === 0n)) {
+      console.warn(`[DeepBook] WARNING: owner received zero value - order may not have filled`);
     }
 
     return {
@@ -171,8 +209,8 @@ export async function routeToDeepBook(intent, packageId, vaultId) {
       amount: intent.amount,
       amount_sui: amountSui.toFixed(4),
       price: price.last_price,
-      orderDigest: orderResult.digest,
-      withdrawDigest: withdrawResult.digest,
+      digest: txResult.digest,
+      received,
       timestamp: Date.now(),
     };
 

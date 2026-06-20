@@ -72,9 +72,9 @@ The engine also serves live DeepBook market data — prices, order book, and rec
 
 | Object | Address |
 |--------|---------|
-| Package ID | `0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499` |
-| Vault (shared) | `0x60152b4b1d674d82b0bfcb1a874447ce3b0ca093d26b9cb05dc8fd1e240051af` |
-| Vault initial version | `908201511` |
+| Package ID | `0xd2ceb60740725ec1b962511378c8701b54173354a133175ec7663160af925eb5` |
+| Vault (shared) | `0xadddb5525c4583602945353a143e7a19ce687b22cede1563b32f8cdfb45df160` |
+| Vault initial version | `909793926` |
 | BalanceManager | `0xe36aafc2602269e5641833c7261acaf3a655b8f98d535d446adcfffb09809ebd` |
 
 ---
@@ -130,9 +130,9 @@ Create `backend/.env`:
 ```
 PORT=3001
 SUI_NETWORK=testnet
-PACKAGE_ID=0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499
-VAULT_ID=0x60152b4b1d674d82b0bfcb1a874447ce3b0ca093d26b9cb05dc8fd1e240051af
-VAULT_INITIAL_VERSION=908201511
+PACKAGE_ID=0xd2ceb60740725ec1b962511378c8701b54173354a133175ec7663160af925eb5
+VAULT_ID=0xadddb5525c4583602945353a143e7a19ce687b22cede1563b32f8cdfb45df160
+VAULT_INITIAL_VERSION=909793926
 BALANCE_MANAGER_ID=0xe36aafc2602269e5641833c7261acaf3a655b8f98d535d446adcfffb09809ebd
 BALANCE_MANAGER_VERSION=885018947
 MATCHER_PRIVATE_KEY=suiprivkey1...

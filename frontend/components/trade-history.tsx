@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 
-const PACKAGE_ID = '0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499';
+const PACKAGE_ID = '0xd2ceb60740725ec1b962511378c8701b54173354a133175ec7663160af925eb5';
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 const BACKEND_URL = 'https://darkbook-backend.onrender.com';
 

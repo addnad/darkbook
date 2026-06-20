@@ -1,156 +1,182 @@
 # DarkBook
 
-**Private OTC Dark Pool on Sui**
+**A private OTC dark pool on Sui.**
 
-Off-chain intent matching · On-chain atomic settlement · DeepBook V3 liquidity fallback
+Off-chain intent matching · on-chain atomic settlement · DeepBook V3 liquidity fallback.
 
-> Sui Overflow 2026 — DeepBook Track + DeFi and Payments Track
+[Live app →](https://darkbookapp.vercel.app/)
 
 ---
 
 ## Overview
 
-DarkBook is an on-chain OTC trading platform built on Sui that enables large-block trades without market impact. Traders post signed intents off-chain specifying side, amount, and minimum acceptable price. The matching engine pairs opposing intents privately and settles them atomically through a Move vault — no order appears on-chain until the trade is already done.
+DarkBook is an on-chain OTC venue on Sui for executing large-block trades without market impact. Traders submit intents specifying side, amount, and a minimum acceptable price. A matching engine pairs opposing intents privately and settles them atomically through a Move vault — nothing about a trade appears on-chain until it is already done.
 
-When no peer match is found within 30 seconds, the unmatched intent routes automatically to DeepBook V3, ensuring every trade gets filled.
+When no counterparty match is found within 120 seconds, the unmatched intent is routed automatically to DeepBook V3, Sui's native central limit order book, so every order has a path to execution.
 
-**Core privacy guarantee:** Your price and size are never visible on-chain before execution. Front-running is impossible because there is nothing to front-run.
-
----
-
-## Deployed Contracts (Sui Testnet)
-
-| Object | Address |
-|--------|---------|
-| Package ID | 0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd000de3 |
-| Vault (shared) | 0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba |
-| Vault Initial Version | 349181739 |
-| Confirmed Settlement | 9fJ6QE6ShmqcZ1c2BvfcjNY49H75FWbB7eAR79ZhXq82 |
-| Matcher | 0x5d66049199c27d0bbd6e5cf0b4148720b6304643439dda84b6b292a8c5ce99f0 |
+**Privacy guarantee:** price and size are never exposed on-chain ahead of execution. There is no resting order to observe, so there is nothing to front-run.
 
 ---
 
-## Architecture
+## How it works
 
-### 1. Move Vault Contract
+DarkBook has three layers: a Move settlement vault, an off-chain matching engine, and a DeepBook V3 fallback.
 
-Shared Sui object holding user funds and executing atomic settlements.
+### 1 · Settlement vault (Move)
+
+A shared Sui object that custodies SUI in a single pooled balance and tracks each participant's claim in a table. Settlement moves balances between counterparties as bookkeeping; participants withdraw their settled balance from the shared pool. This pooled design is what allows a settled counterparty to withdraw value that originated from the other side of the trade.
 
 | Function | Description |
 |----------|-------------|
-| deposit_and_intent() | Locks SUI, creates a shared Intent object, emits Deposited event |
-| settle() | Matcher-only. Atomically swaps balances between buyer and seller. Emits Settled event |
-| cancel() | User reclaims funds if intent is unmatched |
+| `deposit_and_intent` | Locks SUI into the pool, records the depositor's balance, creates a shared `Intent` object, emits `Deposited` |
+| `settle` | Matcher-only. Adjusts buyer/seller balances atomically at the agreed price. Emits `Settled` |
+| `cancel` | Returns an unmatched depositor's balance from the pool |
+| `withdraw` | Withdraws a settled balance from the pool to the owner. Emits `Withdrawn` |
 
-Intents are shared objects so the matcher can reference them in a PTB without owning them. Coins are stored as dynamic fields keyed by depositor address.
+`Intent` objects are shared, so the matcher can reference them inside a programmable transaction block (PTB) without owning them.
 
-### 2. Intent Matching Engine
+### 2 · Intent matching engine (Node.js / Express)
 
-Stateless Node.js / Express server.
+A stateless service that pairs opposing intents.
 
-1. Validates request fields
-2. Scans pending intents for price overlap: buyer.min_price >= seller.min_price
-3. Match found: builds PTB calling vault::settle, signs, executes, returns digest
-4. No match: queues intent with 30-second DeepBook fallback timer
+1. Validates the request and creates an intent record.
+2. Scans pending intents for a price overlap (`buyer.min_price >= seller.min_price`).
+3. On a match: builds a PTB calling `vault::settle`, signs as the matcher, executes, and returns the digest.
+4. On no match: queues the intent with a 120-second fallback timer. If it stays unmatched, it routes to DeepBook V3.
 
-### 3. DeepBook V3 Integration
+### 3 · DeepBook V3 fallback
 
-Live market data from the DeepBook V3 Indexer across 6 active pairs. Unmatched orders route to DeepBook after the timeout.
+Unmatched intents are filled on DeepBook V3 through the matcher's `BalanceManager`. The route is side-aware:
 
-Supported pairs: SUI_DBUSDC · DEEP_SUI · DEEP_DBUSDC · WAL_SUI · WAL_DBUSDC · DBUSDT_DBUSDC
+- **Sell** — deposits SUI (plus a small fee buffer), places a market sell, and sweeps both resulting coins back to the trader.
+- **Buy** — deposits DBUSDC sized to the order with a slippage buffer, places a market buy, and sweeps the filled SUI plus any unused buffer back to the trader.
 
----
+Buffers exist because DeepBook charges the taker fee from the input asset when not paying in DEEP; any unused remainder is always returned, so the trader never overpays. The `BalanceManager` is fully swept after each route, so no residual balance is left between trades.
 
-## How a Trade Executes
-
-1. Buyer calls deposit_and_intent with side=0, min_price=3_500_000. Vault locks 0.2 SUI.
-2. Seller calls deposit_and_intent with side=1, min_price=3_400_000. Vault locks 0.2 SUI.
-3. Both POST their Intent object IDs to /intent. Engine detects overlap: 3.50 >= 3.40. Agreed price = 3.45.
-4. Matcher calls settle(vault, intent_buyer, intent_seller, agreed_price). Balances swap atomically.
-5. Settled event on-chain: { buyer, seller, amount: 200000000, price: 3450000 }
-6. If no peer match in 30s: routes to DeepBook V3 automatically.
+The engine also serves live DeepBook market data — prices, order book, and recent trades — sourced from the DeepBook V3 Indexer across active pairs including SUI/DBUSDC, DEEP/SUI, DEEP/DBUSDC, WAL/SUI, WAL/DBUSDC, and DBUSDT/DBUSDC. On-chain execution is currently verified on SUI/DBUSDC.
 
 ---
 
-## API Reference
+## Trade lifecycle
 
-### Intent Endpoints
+1. Buyer calls `deposit_and_intent` (`side = 0`). The vault pools their SUI and records their balance.
+2. Seller calls `deposit_and_intent` (`side = 1`). Same.
+3. Both submit their on-chain `Intent` IDs to `POST /intent`. The engine detects the price overlap and computes the agreed mid price.
+4. The matcher calls `settle`; balances adjust atomically and a `Settled` event is emitted.
+5. Each party withdraws their settled balance from the pool.
+6. If no peer match appears within 120 seconds, the intent routes to DeepBook V3 and fills on-chain.
+
+---
+
+## Deployment (Sui Testnet)
+
+| Object | Address |
+|--------|---------|
+| Package ID | `0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499` |
+| Vault (shared) | `0x60152b4b1d674d82b0bfcb1a874447ce3b0ca093d26b9cb05dc8fd1e240051af` |
+| Vault initial version | `908201511` |
+| BalanceManager | `0xe36aafc2602269e5641833c7261acaf3a655b8f98d535d446adcfffb09809ebd` |
+
+---
+
+## API reference
+
+### Intent endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| /intent | POST | Submit intent. Returns matched with digest or pending with timer |
-| /intents | GET | All pending intents with DeepBook fallback countdown |
-| /intent/:id | GET | Status and time remaining for a specific intent |
-| /health | GET | Server status and matcher address |
+| `/intent` | POST | Submit an intent. Returns `matched` with a digest, or `pending` with a fallback timer |
+| `/intents` | GET | All pending intents with their DeepBook fallback countdown |
+| `/intent/:id` | GET | Status and time remaining for one intent |
+| `/routing/:id` | GET | DeepBook routing result for an intent (by UUID or on-chain ID) |
+| `/health` | GET | Service status and matcher address |
 
-### DeepBook Endpoints
+### DeepBook endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| /deepbook/pairs | GET | All active pairs with live price, bid, ask, volume |
-| /deepbook/price?pool= | GET | Live price. Default: SUI_DBUSDC |
-| /deepbook/orderbook?pool=&depth= | GET | Bid and ask levels. Default depth: 10 |
-| /deepbook/trades?pool= | GET | Recent trades with price, volume, fees, digest |
+| `/deepbook/pairs` | GET | Active pairs with live price, bid, ask, and volume |
+| `/deepbook/price?pool=` | GET | Live price (default `SUI_DBUSDC`) |
+| `/deepbook/orderbook?pool=&depth=` | GET | Bid/ask levels (default depth 10) |
+| `/deepbook/trades?pool=` | GET | Recent trades |
 
-### POST /intent Request Body
+### `POST /intent` body
 
-owner: Sui wallet address
-side: 0 = buy, 1 = sell
-amount: in MIST (1 SUI = 1,000,000,000)
-min_price: scaled by 1e6 (3500000 = $3.50)
-onChainId: Intent shared object ID from deposit transaction
-initialSharedVersion: from deposit transaction output
-
----
-
-## Local Setup
-
-Prerequisites: Sui CLI >= 1.73.0, Node.js >= 20, funded Sui testnet wallet.
-
-Clone and install:
-
-    git clone https://github.com/addnad/darkbook
-    cd darkbook/backend
-    npm install
-
-Create backend/.env:
-
-    PORT=3001
-    SUI_NETWORK=testnet
-    PACKAGE_ID=0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd000de3
-    VAULT_ID=0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba
-    VAULT_INITIAL_VERSION=349181739
-    MATCHER_PRIVATE_KEY=suiprivkey1...
-
-Run:
-
-    node index.js
-
-Deploy your own vault:
-
-    cd contracts
-    sui client switch --env testnet
-    rm -f Published.toml
-    sui client publish --gas-budget 50000000
-
-Update PACKAGE_ID, VAULT_ID, and VAULT_INITIAL_VERSION in .env with new output.
+| Field | Description |
+|-------|-------------|
+| `owner` | Sui wallet address |
+| `side` | `0` = buy, `1` = sell |
+| `amount` | MIST (1 SUI = 1,000,000,000) |
+| `min_price` | scaled by 1e6 (`3500000` = $3.50) |
+| `onChainId` | `Intent` shared object ID from the deposit transaction |
+| `initialSharedVersion` | from the deposit transaction output |
 
 ---
 
-## Tech Stack
+## Local setup
+
+**Prerequisites:** Sui CLI, Node.js 20+, and a funded Sui testnet wallet.
+
+Clone and install the backend:
+
+```
+git clone https://github.com/addnad/darkbook
+cd darkbook/backend
+npm install
+```
+
+Create `backend/.env`:
+
+```
+PORT=3001
+SUI_NETWORK=testnet
+PACKAGE_ID=0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499
+VAULT_ID=0x60152b4b1d674d82b0bfcb1a874447ce3b0ca093d26b9cb05dc8fd1e240051af
+VAULT_INITIAL_VERSION=908201511
+BALANCE_MANAGER_ID=0xe36aafc2602269e5641833c7261acaf3a655b8f98d535d446adcfffb09809ebd
+BALANCE_MANAGER_VERSION=885018947
+MATCHER_PRIVATE_KEY=suiprivkey1...
+```
+
+Run the engine:
+
+```
+node index.js
+```
+
+Run the frontend:
+
+```
+cd ../frontend
+npm install
+npm run dev
+```
+
+### Deploying your own vault
+
+```
+cd contracts
+sui client switch --env testnet
+sui client publish --gas-budget 50000000
+```
+
+Update `PACKAGE_ID`, `VAULT_ID`, and `VAULT_INITIAL_VERSION` in `.env` with the published output. The matcher wallet also needs a DeepBook `BalanceManager`; set `BALANCE_MANAGER_ID` and `BALANCE_MANAGER_VERSION` accordingly.
+
+---
+
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
-| Smart Contract | Move (Sui 2024 edition) |
-| Contract Tooling | Sui CLI 1.73.0 |
-| Intent Engine | Node.js 22 + Express |
-| Sui SDK | @mysten/sui@1.21.0 |
-| DeepBook Data | DeepBook V3 Indexer REST API |
-| Frontend | React + Vite + TypeScript + @mysten/dapp-kit |
-| Deployment | Render (backend) + Vercel (frontend) |
+| Smart contract | Move (Sui 2024 edition) |
+| Intent engine | Node.js + Express |
+| Sui SDK | `@mysten/sui` (engine 1.45 · frontend 2.18) |
+| DeepBook | `@mysten/deepbook-v3` 1.5 + DeepBook V3 Indexer |
+| Frontend | Next.js 14 · React 18 · TypeScript · `@mysten/dapp-kit` 1.0 |
+| Deployment | Render (engine) · Vercel (frontend) |
 
 ---
 
-## Built by
+## License
 
-@1st_bernice · Sui Overflow 2026
+MIT

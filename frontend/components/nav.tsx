@@ -15,7 +15,12 @@ export default function Nav() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-20 grid grid-cols-3 items-center px-6 py-4">
-      <span className="text-sm font-mono tracking-[0.2em] uppercase text-black mix-blend-exclusion">
+      <span className="flex items-center gap-2 text-sm font-mono tracking-[0.2em] uppercase text-black mix-blend-exclusion">
+        <svg width="16" height="16" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <path d="M17 8 H9 V40 H17" stroke="currentColor" strokeWidth="4" fill="none"/>
+          <path d="M31 8 H39 V40 H31" stroke="currentColor" strokeWidth="4" fill="none"/>
+          <rect x="20" y="21" width="8" height="6" fill="currentColor"/>
+        </svg>
         DarkBook
       </span>
       <div className="flex justify-center overflow-hidden">

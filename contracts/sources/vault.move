@@ -1,5 +1,6 @@
 module darkbook::vault {
     use sui::coin::{Self, Coin};
+    use sui::balance::{Self, Balance};
     use sui::sui::SUI;
     use sui::table::{Self, Table};
     use sui::event;
@@ -13,6 +14,7 @@ module darkbook::vault {
     public struct Vault has key {
         id: UID,
         balances: Table<address, u64>,
+        pool: Balance<SUI>,
         matcher: address,
     }
 
@@ -44,10 +46,16 @@ module darkbook::vault {
         amount: u64,
     }
 
+    public struct Withdrawn has copy, drop {
+        user: address,
+        amount: u64,
+    }
+
     fun init(ctx: &mut TxContext) {
         let vault = Vault {
             id: object::new(ctx),
             balances: table::new(ctx),
+            pool: balance::zero(),
             matcher: tx_context::sender(ctx),
         };
         transfer::share_object(vault);
@@ -71,7 +79,10 @@ module darkbook::vault {
             table::add(&mut vault.balances, sender, amount);
         };
 
-        sui::dynamic_field::add(&mut vault.id, sender, coin);
+        // Merge into the shared pool instead of a per-depositor dynamic field.
+        // This is what makes settled winners able to withdraw funds that were
+        // originally someone else's deposit.
+        balance::join(&mut vault.pool, coin::into_balance(coin));
 
         let intent = Intent {
             id: object::new(ctx),
@@ -110,17 +121,13 @@ module darkbook::vault {
         assert!(*table::borrow(&vault.balances, buyer) >= amount, EInsufficientBalance);
         assert!(*table::borrow(&vault.balances, seller) >= amount, EInsufficientBalance);
 
-        // Clear balances
+        // Bookkeeping only - no coin movement here. The pool already holds
+        // all deposited SUI; withdraw() is what lets settled parties claim
+        // their updated balance from the shared pool.
         let buyer_bal = table::borrow_mut(&mut vault.balances, buyer);
-        *buyer_bal = 0;
+        *buyer_bal = *buyer_bal - amount;
         let seller_bal = table::borrow_mut(&mut vault.balances, seller);
-        *seller_bal = 0;
-
-        // Transfer coins directly to both parties
-        let buyer_coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, buyer);
-        let seller_coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, seller);
-        transfer::public_transfer(buyer_coin, buyer);
-        transfer::public_transfer(seller_coin, seller);
+        *seller_bal = *seller_bal + amount;
 
         intent_a.matched = true;
         intent_b.matched = true;
@@ -140,17 +147,18 @@ module darkbook::vault {
         intent.matched = true;
 
         let bal = table::borrow_mut(&mut vault.balances, sender);
+        let amount = *bal;
         *bal = 0;
 
-        let coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, sender);
+        let coin = coin::from_balance(balance::split(&mut vault.pool, amount), ctx);
         transfer::public_transfer(coin, sender);
 
-        event::emit(Cancelled { user: sender, amount: intent.amount });
+        event::emit(Cancelled { user: sender, amount });
     }
 
     entry fun withdraw(
         vault: &mut Vault,
-        intent: &mut Intent,
+        intent: &Intent,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
@@ -159,10 +167,13 @@ module darkbook::vault {
         assert!(table::contains(&vault.balances, sender), EInsufficientBalance);
 
         let bal = table::borrow_mut(&mut vault.balances, sender);
+        let amount = *bal;
         *bal = 0;
 
-        let coin: Coin<SUI> = sui::dynamic_field::remove(&mut vault.id, sender);
+        let coin = coin::from_balance(balance::split(&mut vault.pool, amount), ctx);
         transfer::public_transfer(coin, sender);
+
+        event::emit(Withdrawn { user: sender, amount });
     }
 
     public fun balance_of(vault: &Vault, addr: address): u64 {

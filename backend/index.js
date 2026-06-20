@@ -78,6 +78,16 @@ async function settleOnChain(intentA, intentB) {
   });
 
   await client.waitForTransaction({ digest: result.digest });
+
+  // Verify the settlement actually succeeded on-chain. Without this,
+  // an aborted settle (e.g. ENotOwner, insufficient balance) would be
+  // logged as "Settled" and reported to the client as matched.
+  const status = result.effects?.status?.status;
+  if (status !== "success") {
+    const errMsg = result.effects?.status?.error || "unknown on-chain abort";
+    throw new Error(`Settlement aborted on-chain: ${errMsg} (digest: ${result.digest})`);
+  }
+
   return result;
 }
 

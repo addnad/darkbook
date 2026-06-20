@@ -130,8 +130,12 @@ export async function routeToDeepBook(intent) {
       depositAmount = Math.ceil(amountSui * pricePerSui * SLIPPAGE_BUFFER * depositScalar) / depositScalar;
       console.log(`[DeepBook] BUY: will deposit ${depositAmount} DBUSDC at ask $${pricePerSui} (+20% slippage buffer)`);
     } else {
-      depositAmount = amountSui;
-      console.log(`[DeepBook] SELL: will deposit ${depositAmount} SUI`);
+      // Deposit slightly MORE than the sold quantity so the taker fee
+      // (paid in input token when payWithDeep=false) is covered. Excess
+      // sweeps back to the owner in the withdraw step.
+      const FEE_BUFFER = 1.01; // 1% headroom for taker fee
+      depositAmount = Math.ceil(amountSui * FEE_BUFFER * SUI_SCALAR) / SUI_SCALAR;
+      console.log(`[DeepBook] SELL: will deposit ${depositAmount} SUI (sell ${amountSui} + 1% fee buffer)`);
     }
 
     // --- Pre-flight balance checks (early, friendly errors) ---
@@ -154,40 +158,91 @@ export async function routeToDeepBook(intent) {
       }
     }
 
-    // --- Single atomic PTB: deposit -> market order -> withdraw all ---
-    console.log(`[DeepBook] Building atomic deposit+order+withdraw PTB...`);
-    const tx = new Transaction();
-    tx.setGasBudget(300_000_000);
+    let txResult;
 
-    // 1. Deposit (coinWithBalance auto-selects/merges/splits the funding coin)
-    dbClient.balanceManager.depositIntoManager(
-      BALANCE_MANAGER_KEY,
-      depositCoinKey,
-      depositAmount
-    )(tx);
+    if (isBid) {
+      // --- BUY: single atomic PTB (proven to work) ---
+      console.log(`[DeepBook] Building atomic deposit+order+withdraw PTB...`);
+      const tx = new Transaction();
+      tx.setGasBudget(300_000_000);
 
-    // 2. Place market order (SDK generates owner proof internally)
-    dbClient.deepBook.placeMarketOrder({
-      poolKey: POOL_KEY,
-      balanceManagerKey: BALANCE_MANAGER_KEY,
-      clientOrderId: Date.now(),
-      quantity: amountSui,
-      isBid,
-      payWithDeep: false,
-    })(tx);
+      dbClient.balanceManager.depositIntoManager(
+        BALANCE_MANAGER_KEY, depositCoinKey, depositAmount
+      )(tx);
 
-    // 3. Sweep BOTH coins back to the intent owner. Manager ends empty.
-    dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "SUI", intent.owner)(tx);
-    dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "DBUSDC", intent.owner)(tx);
+      dbClient.deepBook.placeMarketOrder({
+        poolKey: POOL_KEY,
+        balanceManagerKey: BALANCE_MANAGER_KEY,
+        clientOrderId: Date.now(),
+        quantity: amountSui,
+        isBid,
+        payWithDeep: false,
+      })(tx);
 
-    const txResult = await client.signAndExecuteTransaction({
-      signer: keypair,
-      transaction: tx,
-      options: { showEffects: true, showEvents: true, showBalanceChanges: true },
-    });
-    await client.waitForTransaction({ digest: txResult.digest });
-    assertSuccess(txResult, "Atomic route");
-    console.log(`[DeepBook] Atomic route confirmed: ${txResult.digest}`);
+      dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "SUI", intent.owner)(tx);
+      dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "DBUSDC", intent.owner)(tx);
+
+      txResult = await client.signAndExecuteTransaction({
+        signer: keypair,
+        transaction: tx,
+        options: { showEffects: true, showEvents: true, showBalanceChanges: true },
+      });
+      await client.waitForTransaction({ digest: txResult.digest });
+      assertSuccess(txResult, "Atomic route");
+      console.log(`[DeepBook] Atomic route confirmed: ${txResult.digest}`);
+
+    } else {
+      // --- SELL: three sequential transactions (deposit -> order -> withdraw) ---
+      // The atomic PTB aborts on SELL settlement; sequential txs work because
+      // each step fully commits before the next reads the manager state.
+
+      // Step 1: deposit SUI
+      console.log(`[DeepBook] SELL step 1/3: depositing ${depositAmount} SUI...`);
+      const depositTx = new Transaction();
+      depositTx.setGasBudget(100_000_000);
+      dbClient.balanceManager.depositIntoManager(
+        BALANCE_MANAGER_KEY, depositCoinKey, depositAmount
+      )(depositTx);
+      const depositRes = await client.signAndExecuteTransaction({
+        signer: keypair, transaction: depositTx, options: { showEffects: true },
+      });
+      await client.waitForTransaction({ digest: depositRes.digest });
+      assertSuccess(depositRes, "SELL deposit");
+      console.log(`[DeepBook] Deposit confirmed: ${depositRes.digest}`);
+
+      // Step 2: place market order
+      console.log(`[DeepBook] SELL step 2/3: placing market order...`);
+      const orderTx = new Transaction();
+      orderTx.setGasBudget(250_000_000);
+      dbClient.deepBook.placeMarketOrder({
+        poolKey: POOL_KEY,
+        balanceManagerKey: BALANCE_MANAGER_KEY,
+        clientOrderId: Date.now(),
+        quantity: amountSui,
+        isBid,
+        payWithDeep: false,
+      })(orderTx);
+      const orderRes = await client.signAndExecuteTransaction({
+        signer: keypair, transaction: orderTx, options: { showEffects: true, showEvents: true },
+      });
+      await client.waitForTransaction({ digest: orderRes.digest });
+      assertSuccess(orderRes, "SELL market order");
+      console.log(`[DeepBook] Market order confirmed: ${orderRes.digest}`);
+
+      // Step 3: withdraw both coins to owner (sweeps manager empty)
+      console.log(`[DeepBook] SELL step 3/3: withdrawing proceeds to ${intent.owner}...`);
+      const withdrawTx = new Transaction();
+      withdrawTx.setGasBudget(100_000_000);
+      dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "SUI", intent.owner)(withdrawTx);
+      dbClient.balanceManager.withdrawAllFromManager(BALANCE_MANAGER_KEY, "DBUSDC", intent.owner)(withdrawTx);
+      txResult = await client.signAndExecuteTransaction({
+        signer: keypair, transaction: withdrawTx,
+        options: { showEffects: true, showBalanceChanges: true },
+      });
+      await client.waitForTransaction({ digest: txResult.digest });
+      assertSuccess(txResult, "SELL withdrawal");
+      console.log(`[DeepBook] Withdrawal confirmed: ${txResult.digest}`);
+    }
 
     const received = (txResult.balanceChanges ?? [])
       .filter(c => c.owner?.AddressOwner === intent.owner)

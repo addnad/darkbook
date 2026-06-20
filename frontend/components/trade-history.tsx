@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 
-const PACKAGE_ID = '0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd000de3';
+const PACKAGE_ID = '0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499';
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 
 interface Trade {

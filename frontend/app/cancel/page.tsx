@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction, ConnectModal } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 
-const PACKAGE_ID = '0x2276038051933e0e4024bc253d1b646982afb60162b79de666d080a7fd000de3';
-const VAULT_ID = '0x84e7da902cf30f0946a320a17dee1b52d39bb040ef03822aab2084ab41f2eaba';
-const VAULT_INITIAL_VERSION = 349181739;
+const PACKAGE_ID = '0xf3192aa949eb9e9ede9e0cf2cdb6d966479fe10f101e72b77caaafba28b87499';
+const VAULT_ID = '0x60152b4b1d674d82b0bfcb1a874447ce3b0ca093d26b9cb05dc8fd1e240051af';
+const VAULT_INITIAL_VERSION = 908201511;
 
 export default function CancelPage() {
   const account = useCurrentAccount();

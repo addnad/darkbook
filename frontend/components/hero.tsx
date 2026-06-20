@@ -237,8 +237,8 @@ export default function Hero() {
 													{isSubmitting ? 'Submitting...' : !account ? 'Connect wallet to continue' : 'Submit Intent'}
 												</button>
 											</form>
-											<TradeHistory onRefresh={historyRefresh} />
 											<PendingIntents />
+											<TradeHistory onRefresh={historyRefresh} />
 										</div>
 									</div>
 								</motion.div>

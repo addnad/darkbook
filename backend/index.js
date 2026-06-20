@@ -89,7 +89,7 @@ function scheduleDeepBookFallback(intent) {
     try {
       const result = await routeToDeepBook(intent, PACKAGE_ID, VAULT_ID);
       console.log("[DeepBook] Routed:", result);
-      routingResults.set(intent.id, {
+      const routedRecord = {
         status: "routed",
         venue: "DeepBook V3",
         intentId: intent.id,
@@ -100,15 +100,19 @@ function scheduleDeepBookFallback(intent) {
         received: result.received,
         price: result.price,
         timestamp: result.timestamp,
-      });
+      };
+      routingResults.set(intent.id, routedRecord);
+      if (intent.onChainId) routingResults.set(intent.onChainId, routedRecord);
     } catch (err) {
       console.error("[DeepBook] Routing failed:", err.message);
-      routingResults.set(intent.id, {
+      const failedRecord = {
         status: "routing_failed",
         intentId: intent.id,
         error: err.message,
         timestamp: Date.now(),
-      });
+      };
+      routingResults.set(intent.id, failedRecord);
+      if (intent.onChainId) routingResults.set(intent.onChainId, failedRecord);
     }
   }, MATCH_TIMEOUT_MS);
   return timer;

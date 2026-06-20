@@ -227,8 +227,20 @@ app.post("/intent", async (req, res) => {
       });
     } catch (err) {
       console.error("Settle failed:", err.message);
+      // Settlement aborted on-chain. Re-queue BOTH intents with fresh
+      // DeepBook fallback timers so neither gets stuck: each can re-match
+      // with a new counterparty, or route to DeepBook after the timeout.
+      matchedIntent.timer = scheduleDeepBookFallback(matchedIntent);
       pendingIntents.set(matchedId, matchedIntent);
-      return res.status(500).json({ error: "Settlement failed", detail: err.message });
+      intent.timer = scheduleDeepBookFallback(intent);
+      pendingIntents.set(intent.id, intent);
+      console.log("Both intents re-queued with DeepBook fallback after settle failure");
+      return res.status(200).json({
+        status: "pending",
+        intentId: intent.id,
+        message: "Match settlement failed; intent re-queued and will route to DeepBook if unmatched",
+        fallback: "DeepBook",
+      });
     }
   } else {
     // No peer match — queue with DeepBook fallback timer

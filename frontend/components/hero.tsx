@@ -196,8 +196,7 @@ export default function Hero() {
 													</div>
 													<div>
 														<p className="text-base sm:text-lg lg:text-xl text-white">Private OTC Dark Pool</p>
-														<p className="text-sm sm:text-base text-white/70">Sui Overflow 2026 · DeepBook Track</p>
-													</div>
+																			</div>
 												</div>
 											</div>
 										</div>
@@ -217,7 +216,7 @@ export default function Hero() {
 												<div>
 													<label className="block text-[10px] font-mono font-normal text-white mb-2 tracking-[0.5px] uppercase">PAIR *</label>
 													<select id="pair" name="pair" className="w-full px-4 py-2.5 rounded-lg bg-[#001F63] border-0 text-white focus:outline-none focus:ring-2 focus:ring-white/20 transition-all appearance-none cursor-pointer text-sm h-10" style={{backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem'}}>
-														<option value="SUI/USDC">SUI/USDC</option>
+														<option value="SUI/DBUSDC">SUI/DBUSDC</option>
 														<option value="SUI/USDT">SUI/USDT</option>
 														<option value="DEEP/SUI">DEEP/SUI</option>
 														<option value="DEEP/USDC">DEEP/USDC</option>
@@ -265,7 +264,18 @@ export default function Hero() {
 																<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Digest</span><span className="text-white font-medium text-xs">{intentResult.digest.slice(0,8)}…{intentResult.digest.slice(-6)}</span></div>
 															</div>
 														</>
-													) : (
+													) : intentResult.status === 'routed' ? (
+<>
+<h2 className="text-3xl sm:text-4xl font-medium text-white tracking-[-0.03em]">Routed to DeepBook V3</h2>
+<p className="text-white/70 text-base">No dark pool match — your intent was routed to DeepBook V3 and filled on-chain.</p>
+<div className="w-full bg-white/10 rounded-xl p-5 text-left space-y-3">
+<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Venue</span><span className="text-white font-medium">DeepBook V3</span></div>
+<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Side</span><span className="text-white font-medium">{(intentResult as any).side?.toUpperCase?.() ?? (intentResult as any).side}</span></div>
+<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Price</span><span className="text-white font-medium">${(intentResult as any).price}</span></div>
+<div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Transaction</span>{(intentResult as any).digest ? (<a href={`https://suiscan.xyz/testnet/tx/${(intentResult as any).digest}`} target="_blank" rel="noopener noreferrer" className="text-white font-medium text-xs underline hover:text-white/80">{(intentResult as any).digest.slice(0,8)}…{(intentResult as any).digest.slice(-6)}</a>) : (<span className="text-white font-medium text-xs">—</span>)}</div>
+</div>
+</>
+) : (
 														<>
 															<h2 className="text-3xl sm:text-4xl font-medium text-white tracking-[-0.03em]">Intent Submitted</h2>
 															<p className="text-white/70 text-base">No match found yet — your intent is queued. Routes to DeepBook V3 in 2 minutes if unmatched.</p>

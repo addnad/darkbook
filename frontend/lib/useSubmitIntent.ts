@@ -91,6 +91,13 @@ export async function pollForRouting(
         });
         break;
       }
+      if (data.status === 'routing_failed') {
+        onRouted({
+          status: 'routing_failed',
+          error: data.error,
+        } as any);
+        break;
+      }
     } catch {}
   }
 }

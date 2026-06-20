@@ -89,10 +89,10 @@ export default function Hero() {
 
 				<div className="relative z-10 flex flex-col items-center gap-4 sm:gap-6 text-center">
 					<h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-normal leading-[90%] tracking-[-0.03em] text-black mix-blend-exclusion max-w-2xl">
-						Trade large blocks. Leave no trace.
+						Trade large blocks. Move no markets.
 					</h1>
 					<p className="text-base sm:text-lg md:text-xl leading-[160%] text-black max-w-2xl px-4">
-						Post a signed intent off-chain specifying side, amount, and minimum acceptable price — nothing is visible on-chain.
+						Match opposing intents peer-to-peer and settle atomically at a fair mid-price — with a DeepBook V3 backstop so every order fills.
 					</p>
 					<AnimatePresence initial={false}>
 						{!isExpanded && (
@@ -155,7 +155,7 @@ export default function Hero() {
 													</div>
 													<div>
 														<p className="text-sm sm:text-base text-white leading-[150%]">
-															Post a signed intent off-chain specifying side, amount, and your minimum acceptable price — nothing is visible on-chain.
+															Submit an intent specifying side, amount, and your minimum acceptable price. Intents match peer-to-peer — no standing public order book to pick off.
 														</p>
 													</div>
 												</div>
@@ -167,7 +167,7 @@ export default function Hero() {
 													</div>
 													<div>
 														<p className="text-sm sm:text-base text-white leading-[150%]">
-															Matched intents settle atomically through a Move vault — the trade is final before it ever appears on-chain.
+															Matched intents settle atomically through a Move vault — both sides clear in a single transaction at an agreed mid-price, with no slippage.
 														</p>
 													</div>
 												</div>
@@ -186,7 +186,7 @@ export default function Hero() {
 											</div>
 											<div className="pt-6 sm:pt-8 mt-6 sm:mt-8 border-t border-white/20">
 												<p className="text-lg sm:text-xl lg:text-2xl text-white leading-[150%] mb-4">
-													DarkBook keeps your strategy private. Front-running is impossible because there is nothing to front-run.
+													Trade large blocks without moving the market. Peer-to-peer settlement at a fair mid-price — and a DeepBook V3 backstop so every order fills.
 												</p>
 												<div className="flex items-center gap-3 sm:gap-4">
 													<div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 flex items-center justify-center">

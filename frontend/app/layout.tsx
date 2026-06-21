@@ -18,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "DarkBook — Private OTC Dark Pool on Sui",
-  description: "Trade large blocks without market impact. Private OTC dark pool with atomic settlement on Sui and DeepBook V3 liquidity fallback.",
+  title: "DarkBook — OTC Block Trading on Sui",
+  description: "Trade large blocks without market impact. Atomic peer-to-peer settlement on Sui with a DeepBook V3 liquidity fallback.",
   generator: "DarkBook",
 }
 

@@ -267,7 +267,7 @@ export default function Hero() {
 													) : intentResult.status === 'routed' ? (
 <>
 <h2 className="text-3xl sm:text-4xl font-medium text-white tracking-[-0.03em]">Routed to DeepBook V3</h2>
-<p className="text-white/70 text-base">No dark pool match — your intent was routed to DeepBook V3 and filled on-chain.</p>
+<p className="text-white/70 text-base">No peer match — your intent was routed to DeepBook V3 and filled on-chain.</p>
 <div className="w-full bg-white/10 rounded-xl p-5 text-left space-y-3">
 <div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Venue</span><span className="text-white font-medium">DeepBook V3</span></div>
 <div className="flex justify-between text-sm"><span className="text-white/60 font-mono uppercase tracking-widest">Side</span><span className="text-white font-medium">{(intentResult as any).side?.toUpperCase?.() ?? (intentResult as any).side}</span></div>

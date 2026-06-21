@@ -1,6 +1,6 @@
 # DarkBook
 
-**A private OTC dark pool on Sui.**
+**An OTC block-trading venue on Sui.**
 
 Off-chain intent matching · on-chain atomic settlement · DeepBook V3 liquidity fallback.
 
@@ -10,11 +10,11 @@ Off-chain intent matching · on-chain atomic settlement · DeepBook V3 liquidity
 
 ## Overview
 
-DarkBook is an on-chain OTC venue on Sui for executing large-block trades without market impact. Traders submit intents specifying side, amount, and a minimum acceptable price. A matching engine pairs opposing intents privately and settles them atomically through a Move vault — nothing about a trade appears on-chain until it is already done.
+DarkBook is an on-chain OTC venue on Sui for executing large-block trades without market impact. Traders submit intents specifying side, amount, and a minimum acceptable price. A matching engine pairs opposing intents and settles them atomically through a Move vault — both sides clear in a single transaction at a fair mid-price, with no slippage.
 
 When no counterparty match is found within 120 seconds, the unmatched intent is routed automatically to DeepBook V3, Sui's native central limit order book, so every order has a path to execution.
 
-**Privacy guarantee:** price and size are never exposed on-chain ahead of execution. There is no resting order to observe, so there is nothing to front-run.
+**No market impact:** large blocks clear in a single atomic settlement at a fair mid-price, rather than resting on a public book where they move the market. Unmatched size routes to DeepBook V3 instead of splitting the trade.
 
 ---
 
